@@ -1,0 +1,17 @@
+[tool.poetry]
+name = "finalproject-samoylov-m25-555"
+version = "0.1.0"
+description = "Консольное приложение, имитирующее работу валютного кошелька"
+authors = ["IlyaSamoylov <ilya.samoylov2004@mail.ru>"]
+readme = "README.md"
+packages = [{ include = "valutatrade_hub" }]
+
+[tool.poetry.dependencies]
+python = "^3.12"
+
+[tool.poetry.scripts]
+project = "valutatrade_hub.main:main"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
