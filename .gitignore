@@ -218,3 +218,5 @@ __pycache__/
 
 # доп файлы
 instructions.md
+
+data/
