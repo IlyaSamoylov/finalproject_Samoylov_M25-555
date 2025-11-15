@@ -215,3 +215,6 @@ __pycache__/
 
 # Кэш линтера
 .ruff_cache/
+
+# доп файлы
+instructions.md
