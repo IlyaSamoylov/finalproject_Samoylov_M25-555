@@ -1,9 +1,9 @@
 import secrets, hashlib, datetime
 
-from valutatrade_hub.core.utils import save, load, set_session, get_session, get_portfolio
+from valutatrade_hub.core.utils import save, load, set_session, get_session, get_user
 from valutatrade_hub.constants import USERS_DIR, PORTFOLIOS_DIR, RATES_DIR, VALUTA
 
-# TODO: вынести в отдельную функцию логику поиска пользователя/портфеля по id/username
+# TODO: переписать в вообще все, теперь с классами(
 def register(username:  str, password: str):
 	users_lst = load(USERS_DIR)
 
@@ -11,7 +11,7 @@ def register(username:  str, password: str):
 	if users_lst is None:
 		raise ValueError("Проверь путь до user.json")
 	else:
-		if [user for user in users_lst if user["username"] == username]:
+		if get_user(username) is not None:
 			print(f"Имя пользователя '{username}' уже занято")
 			return
 		if len(password) < 4:
@@ -45,22 +45,22 @@ def register(username:  str, password: str):
 
 def login(username: str, password: str):
 	users_lst = load(USERS_DIR)
-	user = [user for user in users_lst if user["username"] == username]
+	user = get_user(username)
 
-	try:
-		user = user[0]
-		salt = user["salt"]
-		hash_right_pword = user["hashed_password"]
-
-		hash_input_pword = hashlib.sha256(password.encode() + salt.encode()).hexdigest()
-		if hash_right_pword != hash_input_pword:
-			print("Неверный пароль")
-			return
-		print(f"Вы вошли как '{username}' ")
-		set_session(user["user_id"],username)
-	except IndexError:
+	if user is None:
 		print(f"Пользователь '{username}' не найден")
 		return
+
+	salt = user["salt"]
+	hash_right_pword = user["hashed_password"]
+
+	hash_input_pword = hashlib.sha256(password.encode() + salt.encode()).hexdigest()
+	if hash_right_pword != hash_input_pword:
+		print("Неверный пароль")
+		return
+	print(f"Вы вошли как '{username}' ")
+	set_session(user["user_id"],username)
+
 
 def show_portfolio(base: str | None  = 'USD'):
 	if base not in VALUTA:
@@ -79,7 +79,9 @@ def show_portfolio(base: str | None  = 'USD'):
 		print("Проверь путь к портфелям")
 		return
 
-	user_portfolio = get_portfolio(log_user_id)
+	# вернуть get_portfolio, если появится функция удаления user из списка, иначе они просто будут в списке по порядку
+	user_portfolio = portfolios[log_user_id-1]
+	# user_portfolio = get_portfolio(log_user_id)
 	# user_portfolio = [port for port in portfolios if port["user_id"] == log_user_id][0]
 
 	if not user_portfolio:
@@ -96,7 +98,7 @@ def show_portfolio(base: str | None  = 'USD'):
 	total = 0
 	for currency_code, balance in wallets.items():
 		balance = balance["balance"]
-		rate_k = rates[currency_code + base]
+		rate_k = rates[f"{currency_code}_{base}"]
 		balance_tr = balance*rate_k
 		total += balance_tr
 		print(f"- {currency_code}: {balance} -> {balance_tr}")
@@ -122,25 +124,68 @@ def buy(currency: str, amount: float):
 		return
 	# Если нет такого кошелька - создать
 	portfolios_lst = load(PORTFOLIOS_DIR)
-	try:
-		user_portf = [portf for portf in portfolios_lst if portf["user_id"] == log_id][0]
-	except IndexError:
-		# Не избыточна ли проверка на то, что для логированного пользователя есть
-		# портфель, если портфели автоматически создаются при регистрации?
+
+	# ! вернуть, если будут удаляться user
+	user_portf = portfolios_lst[log_id-1]
+	# user_portf = get_portfolio(log_id)
+
+	if user_portf is None:
 		print(f"Нет портфеля для пользователя '{log_uname}'")
 		return
+
 	wallets = user_portf["wallets"]
 	if not currency in wallets.keys():
 		wallets[currency] = {"balance": 0.0}
 
 	wallets[currency]["balance"] += amount
 
-	for portf in portfolios_lst:
-		if portf["user_id"] == log_id:
-			portf["wallets"] = wallets
+	save(PORTFOLIOS_DIR, portfolios_lst)
+
+def sell(currency:str, amount:float):
+	session = get_session()
+	if not session:
+		print("Сначала выполните login")
+		return
+	if currency not in VALUTA:
+		print(f"Неизвестный код валюты '{currency}'")
+		return
+	if amount <= 0:
+		print("Количество продаваемой валюты должно быть больше 0")
+		return
+
+	portfolios_lst = load(PORTFOLIOS_DIR)
+	# ! вернуть, если можно удалять пользователей
+	user_portf = portfolios_lst[session["user_id"]-1]
+
+	user_wallets = user_portf["wallets"]
+	if currency not in user_wallets.keys():
+		print(f"Нет кошелька для '{currency}'")
+		return
+	if user_wallets[currency]["balance"] < amount:
+		print(f"На кошельке недостаточно средств")
+		return
+
+	# в этот момент оно меняется по ссылкам и в списке portfolio_lst!!!
+	user_wallets[currency]["balance"] -= amount
 
 	save(PORTFOLIOS_DIR, portfolios_lst)
 
+def get_rate(from_v:str, to:str):
+	if from_v not in VALUTA:
+		print(f"Исходная валюта не существует")
 
+	if to not in VALUTA:
+		print(f"Итоговая валюта не существует")
 
+	rate_dct = load(RATES_DIR)
 
+	last_refresh_str = rate_dct["last_refresh"]
+	last_refresh = datetime.datetime.fromisoformat(last_refresh_str)
+
+	current_time = datetime.datetime.now(datetime.UTC)
+
+	if current_time - last_refresh < datetime.timedelta(minutes=5):
+		print(f"Курс {from_v}->{to}: {rate_dct[f"{from_v}_{to}"]}, (обновлен {last_refresh}")
+	else:
+		print("Нет данных и недоступен Parser ->")
+		print(f"Курс {from_v}->{to} недоступен. Повторите позже")

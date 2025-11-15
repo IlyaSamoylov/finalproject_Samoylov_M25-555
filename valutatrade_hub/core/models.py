@@ -4,11 +4,9 @@ import hashlib
 from valutatrade_hub.constants import PORTFOLIOS_DIR, RATES_DIR, USERS_DIR
 import json
 
+# TODO: ОКАЗЫВАЕТСЯ, КЛАССЫ ВООБЩЕ НЕ ТРОГАЮТ JSON И НАОБОРОТ!!!
 class User:
-	# todo: eбедиться, что User будут передаваться правильные форматы date/password
-	# todo: убедиться, что классам всегда будут соответствовать данные в .json
-	# todo: должна ли будет запись о новом user заноситься в json при инициализации экзмепляра?
-	# todo: нужно ли проверять, что файл .json вообще существует и создавать его?
+	# todo: убедиться, что User будут передаваться правильные форматы date/password
 	def __init__(self, user_id: int, username: str, hashed_password: str,
 	             salt: str, registration_date: datetime.datetime):
 
@@ -24,7 +22,6 @@ class User:
 		self._hashed_password = hashed_password
 		self._salt = salt
 		self._registration_date = registration_date
-	# TODO: изменения в user заносить в .json
 	@property
 	def user_id(self):
 		return self._user_id
@@ -74,7 +71,6 @@ class Wallet:
 		self.currency_code = currency_code
 		self._balance = _balance
 
-	# TODO: для deposit(), withdraw() заносить изменения в .json
 	def deposit(self, amount:float):
 		if not isinstance(amount, (int, float)):
 			raise ValueError("'Количество' денег должно быть числом")
@@ -82,7 +78,6 @@ class Wallet:
 			raise ValueError("Нельзя положить отрицательное количество денег")
 
 		self._balance += amount
-
 
 	def withdraw(self, amount:float):
 		if amount <= 0:
@@ -145,7 +140,6 @@ class Portfolio:
 
 		return total
 
-	# TODO: проконтролировать, что в user не будут повторяться id
 	def get_wallet(self, currency_code):
 		# сначала проверяем в памяти
 		w = self._wallets.get(currency_code)
@@ -171,7 +165,7 @@ class Portfolio:
 			raise ValueError("Кошелёк с кодом {} не найден".format(currency_code))
 
 		wallet_obj = Wallet(currency_code=w_data.get("currency_code", currency_code),
-		                    balance=float(w_data.get("balance", 0.0)))
+		                    _balance=float(w_data["balance"]))
 		# кэшируем в self._wallets
 		self._wallets[currency_code] = wallet_obj
 		return wallet_obj
@@ -192,12 +186,11 @@ class Portfolio:
 		user_dict = user_list[0]
 		user_info = User(self._user_id, user_dict["username"],
 						user_dict["hashed_password"], user_dict["salt"],
-						user_dict["regustration_date"])
+						user_dict["registration_date"])
 		return user_info
 
 	@property
 	def wallets(self):
-		# TODO: вынести в отдельную функцию класса поиск словаря по ID?
 		try:
 			with open(PORTFOLIOS_DIR, "r") as f:
 				portfolios_dict = json.load(f)

@@ -16,7 +16,7 @@ def load(path: Path) -> Any:
 		return None
 
 # ПЕРЕПИСЫВАЕТ ФАЙЛ
-def save(path: Path, data: dict[str, int | str | dict]) -> None:
+def save(path: Path, data: Any) -> None:
 	path.parent.mkdir(parents=True, exist_ok=True)
 	with open(path, "w", encoding="utf-8") as f:
 		json.dump(data, f, ensure_ascii=False, indent=4)
@@ -36,10 +36,10 @@ def clear_session():
 	if SESSION_FILE.exists():
 		SESSION_FILE.unlink()
 
-def get_portfolio(user_id: int):
-	portfolios = load(PORTFOLIOS_DIR)
-	for p in portfolios:
-		if p["user_id"] == user_id:
+def get_user(username: str):
+	users = load(USERS_DIR)
+	for p in users:
+		if p["username"] == username:
 			return p
 	return None
 
