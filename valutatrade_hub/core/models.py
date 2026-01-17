@@ -163,7 +163,7 @@ class Portfolio:
 	# TODO: или вместо user нужен user_id все таки? Дальше глянем
 	def __init__(self, user: User, wallets: dict[str, Wallet] | None = None):
 		self._user = user
-		self._wallets = dict(wallets) if wallets is not None else {}
+		self._wallets = wallets if wallets is not None else {}
 
 	def add_currency(self, currency_code: str):
 		if currency_code in self._wallets:
@@ -208,4 +208,21 @@ class Portfolio:
 			}
 		}
 
+	def view(self, base: str, rates_service) -> tuple[
+		list[tuple[str, float, float]], float]:
+		"""
+		Возвращает:
+		- список (currency, balance, converted_to_base)
+		- total в base
+		"""
+		items = []
+		total = 0.0
+
+		for wallet in self.wallets.values():
+			rate = rates_service.get_rate(wallet.currency_code, base)
+			converted = wallet.balance * rate
+			items.append((wallet.currency_code, wallet.balance, converted))
+			total += converted
+
+		return items, total
 

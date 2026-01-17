@@ -5,10 +5,24 @@ import secrets
 from valutatrade_hub.constants import PORTFOLIOS_DIR, RATES_DIR, USERS_DIR, VALUTA
 from valutatrade_hub.core.utils import get_session, get_user, load, save, set_session
 from valutatrade_hub.core.models import User, Wallet, Portfolio
-class UseCases:
-	def __init__(self, current_user: User | None = None):
-		self._current_user = current_user
 
+
+# TODO: здесь, пока не напишем доступ к курсам через API или что там
+class RatesService:
+	@staticmethod
+	def get_rate(from_: str, to: str) -> float:
+		rates = load(RATES_DIR)
+		if from_ != to and f"{from_}_{to}" not in rates:
+			raise ValueError(f"Неизвестная валюта конвертации: {to}")
+		return 1.0 if from_ == to else rates[f"{from_}_{to}"]["rate"]
+
+
+class UseCases:
+	def __init__(self, rates_service: RatesService, current_user: User | None = None,
+	             current_portfolio: Portfolio | None = None):
+		self._rates_service = rates_service
+		self._current_user = current_user
+		self._current_portfolio = current_portfolio
 
 	# TODO: переписать в вообще все, теперь с классами(
 	def register(self, username:  str, password: str):
@@ -45,7 +59,7 @@ class UseCases:
 
 		# TODO: наверное лучше будет вернуть консоли сообщение для вывода на экран
 		print(f"Пользователь '{username}' зарегистрирован (id={user_id}). "
-	            f"Войдите: login --username {username} --password", len(password)*"*")
+				f"Войдите: login --username {username} --password", len(password)*"*")
 
 	def login(self, username: str, password: str):
 
@@ -65,61 +79,38 @@ class UseCases:
 			raise ValueError("Неверный пароль")
 
 		self._current_user = user
+		self._current_portfolio = self._load_portfolio(user)
 		set_session(user)
 
 		print(f"Вы вошли как '{username}'")
 
+	# TODO: уберем, когда придем к абстракции над БД
+	@staticmethod
+	def _load_portfolio(user: User) -> Portfolio:
+		raw_portfolios = load(PORTFOLIOS_DIR)
 
-	def show_portfolio(base: str | None  = 'USD'):
-		if base not in VALUTA:
-			print(f"Неизвестная базовая валюта '{base}'")
-			return
+		for item in raw_portfolios:
+			if item["user_id"] == user.user_id:
+				wallets = {
+					code: Wallet(currency_code=code,
+								 balance=data["balance"])
+					for code, data in item["wallets"].items()
+				}
+				return Portfolio(user=user, wallets=wallets)
 
-		session = get_session()
-		if not session:
-			print("Сначала выполните login")
-			return
+		# если портфель не найден — возвращаем пустой
+		return Portfolio(user=user, wallets={})
 
-		log_user_id = session["user_id"]
-		log_username = session["username"]
 
-		portfolios = load(PORTFOLIOS_DIR)
-		if portfolios is None:
-			print("Проверь путь к портфелям")
-			return
+	def show_portfolio(self, base: str | None  = 'USD'):
+		# TODO: где будет проверяться base? - наверное, где-то в Currency
+		if not self._current_user:
+			raise ValueError("Сначала выполните login")
 
-		# вернуть get_portfolio, если появится функция удаления user из списка, иначе
-		# они просто будут в списке по порядку
-		user_portfolio = portfolios[log_user_id-1]
-		# user_portfolio = get_portfolio(log_user_id)
-		# user_portfolio = [port for port in portfolios if port["user_id"]
-	#                                                                   == log_user_id][0]
+		if not self._current_portfolio.wallets:
+			raise ValueError(f"Портфель пуст")
 
-		if not user_portfolio:
-			print(f"Портфель пользователя с id = {log_user_id} не найден")
-			return
-
-		wallets = user_portfolio["wallets"]
-		if not wallets:
-			print("Портфель пуст")
-			return
-
-		rates = load(RATES_DIR)
-		print(f"Портфель пользователя '{log_username}' (база: {base}):")
-		total = 0
-		for currency_code, balance in wallets.items():
-			if currency_code == base:
-				print(f"- {currency_code}: {balance["balance"]} -> {balance["balance"]}")
-				total += balance["balance"]
-				continue
-			balance = balance["balance"]
-			rate_k = rates[f"{currency_code}_{base}"]["rate"]
-			balance_tr = balance*rate_k
-			total += balance_tr
-			print(f"- {currency_code}: {balance} -> {balance_tr}")
-
-		print(10*'-')
-		print(f"ИТОГО: {total} {base}")
+		return self._current_portfolio.view(base, self._rates_service)
 
 	def buy(currency: str, amount: float):
 

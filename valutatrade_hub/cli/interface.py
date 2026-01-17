@@ -67,7 +67,6 @@ class ValutatradeCLI:
 			try:
 				command, params = self._parse_cmd()
 
-
 				match command:
 					case "register":
 						self._require_params(params, ["username", "password"])
@@ -82,8 +81,17 @@ class ValutatradeCLI:
 						self._usecases.login(username=u_name, password=pword)
 
 					case "show-portfolio":
-						base = params.get("base")
-						self._usecases.show_portfolio(base=base)
+						# TODO: base не передается, потому и не валидируется
+						# вместо None будет автоматически возвращать "USD"
+						base = params.get("base") or "USD"
+
+						items, total = self._usecases.show_portfolio(base)
+
+						print(f"Портфель (база: {base}):")
+						for code, balance, converted in items:
+							print(f"- {code}: {balance:.4f} → {converted:.2f} {base}")
+						print("-" * 30)
+						print(f"ИТОГО: {total:.2f} {base}")
 
 					case "buy":
 						self._require_params(params, ["currency", "amount"])
