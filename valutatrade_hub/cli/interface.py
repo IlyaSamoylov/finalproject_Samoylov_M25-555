@@ -94,21 +94,42 @@ class ValutatradeCLI:
 						print(f"ИТОГО: {total:.2f} {base}")
 
 					case "buy":
+
 						self._require_params(params, ["currency", "amount"])
 						currency = params.get("currency")
 						amount = self._validate_amount(params)
-						self._usecases.buy(currency=currency, amount=amount)
+						result = self._usecases.buy(currency=currency, amount=amount)
+
+						print(f"Покупка выполнена: {amount:.4f} {currency} по курсу"
+								f"{result['rate']:.2f} USD/{currency} \n"
+								f"Изменения в портфеле: \n"
+							f"- {currency}: было {result['before']:.4f} →" 
+							f"стало {result['after']:.4f} \n"
+						f"Оценочная стоимость покупки: {result['cost']:.2f} USD")
 
 					case "sell":
 						self._require_params(params, ["currency", "amount"])
 						currency = params.get("currency")
 						amount = self._validate_amount(params)
-						self._usecases.sell(currency=currency, amount=amount)
+						result = self._usecases.sell(currency=currency, amount=amount)
+
+						print(f"Продажа выполнена: {amount:.4f} {currency} по курсу "
+								f"{result['rate']:.2f} USD/{currency} \n"
+								f"Изменения в портфеле: \n"
+							f"- {currency}: было {result['before']:.4f} → " 
+							f"стало {result['after']:.4f} \n"
+						f"Оценочная выручка: {result['cost']:.2f} USD")
 
 					case "get-rate":
 						self._require_params(params, ["from", "to"])
 						from_v, to = params.get("from"), params.get("to")
-						self._usecases.get_rate(from_v=from_v, to=to)
+						result = self._usecases.get_rate(from_v=from_v, to=to)
+
+						updated = result["updated_at"].strftime("%Y-%m-%d %H:%M:%S")
+
+						print(f"Курс {from_v}→{to}: {result['rate']:.8f} "
+							f"(обновлено: {updated})")
+						print(f"Обратный курс {to}→{from_v}: {result['reverse_rate']:.2f}")
 
 					case "help":
 						self.print_help(params.get("command"))

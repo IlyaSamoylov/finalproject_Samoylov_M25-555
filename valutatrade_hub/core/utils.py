@@ -1,15 +1,9 @@
 import json
 from pathlib import Path
 from typing import Any
-import secrets
 
 from valutatrade_hub.core.models import User
 from valutatrade_hub.constants import PORTFOLIOS_DIR, RATES_DIR, SESSION_FILE, USERS_DIR
-
-def generate_salt():
-	"""Генерация соли для хэширования паролей"""
-	return secrets.token_hex(8)
-
 
 def load(path: Path) -> Any:
 	try:

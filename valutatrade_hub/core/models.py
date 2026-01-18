@@ -3,8 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 import hashlib
 
-from utils import generate_salt
-
+import secrets
 class User:
 	# todo: убедиться, что User будут передаваться правильные форматы date/password
 	def __init__(self, user_id: int, username: str, password: str,
@@ -62,8 +61,10 @@ class User:
 			raise ValueError("Неверный формат password")
 		return pword
 
-	def _generate_salt(self):
-		return generate_salt()
+	@staticmethod
+	def _generate_salt():
+		"""Генерация соли для хэширования паролей"""
+		return secrets.token_hex(8)
 
 	def change_password(self, new_password: str):
 		self._salt = self._generate_salt()
@@ -166,9 +167,11 @@ class Portfolio:
 		self._wallets = wallets if wallets is not None else {}
 
 	def add_currency(self, currency_code: str):
-		if currency_code in self._wallets:
-			raise ValueError("Кошелек уже существует")
-		self._wallets[currency_code] = Wallet(currency_code, 0.0)
+		if self.has_wallet(currency_code):
+			raise ValueError(f"Кошелёк {currency_code} уже существует")
+		wallet = Wallet(currency_code, 0.0)
+		self._wallets[currency_code] = wallet
+		return wallet
 
 	def get_total_value(self, exchange_rates: dict, base_currency="USD"):
 		total = 0.0
@@ -177,11 +180,13 @@ class Portfolio:
 			total += wallet.balance * rate
 		return total
 
+	def has_wallet(self, currency_code: str) -> bool:
+		return currency_code in self._wallets
+
 	def get_wallet(self, currency_code: str) -> Wallet:
-		try:
-			return self._wallets[currency_code]
-		except KeyError:
+		if not self.has_wallet(currency_code):
 			raise ValueError(f"Кошелёк {currency_code} не найден")
+		return self._wallets[currency_code]
 
 	@property
 	def user(self) -> User:
@@ -225,4 +230,9 @@ class Portfolio:
 			total += converted
 
 		return items, total
+
+	def get_or_create_wallet(self, currency: str) -> Wallet:
+		if not self.has_wallet(currency):
+			return self.add_currency(currency)
+		return self.get_wallet(currency)
 
