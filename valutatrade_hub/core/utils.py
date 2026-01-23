@@ -3,16 +3,24 @@ from pathlib import Path
 from typing import Any
 
 from valutatrade_hub.core.models import User
-from valutatrade_hub.constants import PORTFOLIOS_DIR, RATES_DIR, SESSION_FILE, USERS_DIR
+from valutatrade_hub.infra.settings import SettingsLoader
 
+# TODO: это все перебрать, когда будет синглтон над базой данных
+settings = SettingsLoader()
+data_dir = Path(settings.get("data_dir"))
+
+portfolios_dir = data_dir / "portfolios.json"
+users_dir = data_dir / "users.json"
+rates_dir = data_dir / "rates.json"
+session_dir = data_dir / "session.json"
 def load(path: Path) -> Any:
 	try:
 		with open(path, "r", encoding="utf-8") as f:
 			return json.load(f)
 	except FileNotFoundError:
-		if path in [USERS_DIR, PORTFOLIOS_DIR]:
+		if path in [users_dir, portfolios_dir]:
 			return []
-		elif path == RATES_DIR:
+		elif path == rates_dir:
 			return {}
 		return None
 
@@ -23,35 +31,35 @@ def save(path: Path, data: Any) -> None:
 		json.dump(data, f, ensure_ascii=False, indent=4)
 
 def set_session(user: User):
-	SESSION_FILE.parent.mkdir(parents=True, exist_ok=True)
-	with open(SESSION_FILE, "w", encoding="utf-8") as f:
+	session_dir.parent.mkdir(parents=True, exist_ok=True)
+	with open(session_dir, "w", encoding="utf-8") as f:
 		json.dump(user.session_info(), f, ensure_ascii=False, indent=4)
 
 def get_session():
-	if not SESSION_FILE.exists():
+	if not session_dir.exists():
 		return None
-	with open(SESSION_FILE, "r", encoding="utf-8") as f:
+	with open(session_dir, "r", encoding="utf-8") as f:
 		return json.load(f)
 
 def clear_session():
-	if SESSION_FILE.exists():
-		SESSION_FILE.unlink()
+	if session_dir.exists():
+		session_dir.unlink()
 
 def get_user(username: str):
-	users = load(USERS_DIR)
+	users = load(users_dir)
 	for p in users:
 		if p["username"] == username:
 			return p
 	return None
 
 def init_data_files():
-	if not USERS_DIR.exists():
-		save(USERS_DIR, [])
+	if not users_dir.exists():
+		save(users_dir, [])
 
-	if not PORTFOLIOS_DIR.exists():
-		save(PORTFOLIOS_DIR, [])
+	if not portfolios_dir.exists():
+		save(portfolios_dir, [])
 
-	if not RATES_DIR.exists():
+	if not rates_dir.exists():
 		data = {
 			"EUR_USD": {
 			"rate": 1.0786,                  # 1 евро = 1.0786 доллара
@@ -73,8 +81,8 @@ def init_data_files():
 			# время последнего обновления всех курсов
 			"last_refresh": "2025-10-09T10:35:00"
 				}
-		save(RATES_DIR, data)
+		save(rates_dir, data)
 
-	if not SESSION_FILE.exists():
-		save(SESSION_FILE, {})
+	if not session_dir.exists():
+		save(session_dir, {})
 

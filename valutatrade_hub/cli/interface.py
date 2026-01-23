@@ -1,11 +1,14 @@
 from valutatrade_hub.core.exceptions import ValutaTradeError
 from valutatrade_hub.core.usecases import UseCases
 from valutatrade_hub.core.utils import init_data_files
+from valutatrade_hub.infra.settings import SettingsLoader
 
 class ValutatradeCLI:
 	def __init__(self, usecases: UseCases):
 		self._usecases = usecases
 		self._running = True
+		self._settings = SettingsLoader()
+		self._base_currency = self._settings.get("default_base_currency")
 
 	def print_help(self, command=None):
 		helps = {
@@ -13,7 +16,7 @@ class ValutatradeCLI:
 			"login": "login --username <username> --password <password>",
 			"buy": "buy --currency <currency> --amount <amount>",
 			"sell": "sell --currency <currency> --amount <amount>",
-			"show-portfolio": "show-portfolio [--base <base> = USD]",
+			"show-portfolio": f"show-portfolio [--base <base> = {self._base_currency}]",
 			"get-rate": "get-rate --from <from currency> --to <to currency>",
 			"deposit": "deposit --amount",
 			"справка": "help [--command <command>]",
@@ -75,8 +78,8 @@ class ValutatradeCLI:
 						u_name = params.get('username')
 						pword = params.get('password')
 						self._usecases.register(username=u_name, password=pword)
-						print("В подарок за регистрацию вы получаете стартовый баланс 100 USD.",
-						      "Для пополнения баланса в базовой валюте (USD) можете использовать команду deposit")
+						print(f"В подарок за регистрацию вы получаете стартовый баланс 100 {self._base_currency}.",
+						      f"Для пополнения баланса в базовой валюте ({self._base_currency} можете использовать команду deposit")
 
 					case "login":
 						self._require_params(params, ["username", "password"])
@@ -87,7 +90,7 @@ class ValutatradeCLI:
 					case "show-portfolio":
 						# TODO: base не передается, потому и не валидируется
 						# вместо None будет автоматически возвращать "USD"
-						base = params.get("base") or "USD"
+						base = params.get("base") or self._base_currency
 
 						items, total = self._usecases.show_portfolio(base)
 
@@ -141,9 +144,9 @@ class ValutatradeCLI:
 						result = self._usecases.deposit(amount)
 
 						print(
-							f"Баланс пополнен на {result['amount']:.2f} USD\n"
-							f"Было: {result['before']:.2f} USD\n"
-							f"Стало: {result['after']:.2f} USD"
+							f"Баланс пополнен на {result['amount']:.2f} {self._base_currency}\n"
+							f"Было: {result['before']:.2f} {self._base_currency}\n"
+							f"Стало: {result['after']:.2f} {self._base_currency}"
 						)
 
 					case "help":
