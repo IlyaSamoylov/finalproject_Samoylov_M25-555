@@ -4,10 +4,11 @@ from pathlib import Path
 from valutatrade_hub.core.utils import load, save, set_session
 from valutatrade_hub.core.models import User, Wallet, Portfolio
 from valutatrade_hub.infra.settings import SettingsLoader
-from exceptions import CurrencyNotFoundError, InsufficientFundsError, ApiRequestError, WalletNotFoundError
+from valutatrade_hub.core.exceptions import CurrencyNotFoundError, InsufficientFundsError, ApiRequestError, WalletNotFoundError
 # че, все методы RatesService в try..except c ApiRequestError оборачивать? Или заменить все локальные
 # load(RATES_DIR) на метод _load_rates и засунуть в него ApiRequestError? Если решим определить rates_dict
 # как атрибут класса RatesService, то даже не знаю, куда девать ApiRequestError
+from valutatrade_hub.decorators import log_action
 
 # TODO: здесь, пока не напишем доступ к курсам через API или что там
 class RatesService:
@@ -138,6 +139,7 @@ class UseCases:
 	def _save(path: Path, data):
 		return save(path, data)
 
+	@log_action("REGISTER")
 	def register(self, username:  str, password: str):
 		# password и username валидируются при инициализации экземпляра класса User ниже
 
@@ -175,6 +177,7 @@ class UseCases:
 		print(f"Пользователь '{username}' зарегистрирован (id={user_id}). "
 				f"Войдите: login --username {username} --password", len(password)*"*")
 
+	@log_action("LOGIN")
 	def login(self, username: str, password: str):
 
 		users_lst = self._load(self._users_dir)
@@ -228,6 +231,7 @@ class UseCases:
 
 		return self._current_portfolio.view(base, self._rates_service)
 
+	@log_action("BUY", verbose=True)
 	def buy(self, currency: str, amount: float):
 
 		if not self._current_user:
@@ -272,6 +276,7 @@ class UseCases:
 			"cost": cost_usd,
 		}
 
+	@log_action("SELL", verbose=True)
 	def sell(self, currency:str, amount:float):
 		if not self._current_user:
 			raise ValueError("Сначала нужно зарегистрироваться")
@@ -322,6 +327,7 @@ class UseCases:
 
 		return self._rates_service.get_rate_pair(from_v, to)
 
+	@log_action("DEPOSIT", verbose=True)
 	def deposit(self, amount):
 		if not self._current_user:
 			raise ValueError("Сначала нужно зарегистрироваться")

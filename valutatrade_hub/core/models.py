@@ -4,7 +4,7 @@ from datetime import datetime
 import hashlib
 import secrets
 
-from exceptions import InsufficientFundsError
+from valutatrade_hub.core.exceptions import InsufficientFundsError
 
 class User:
 	# todo: убедиться, что User будут передаваться правильные форматы date/password

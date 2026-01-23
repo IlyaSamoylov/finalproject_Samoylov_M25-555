@@ -169,8 +169,8 @@ class ValutatradeCLI:
 				print(e)
 			except IndexError:
 				print("Вводите сначала имя переменной с \"--\", потом значение")
-			# except Exception as e:
-			# 	print(f"Неожиданная ошибка: \n{e}")
+			except Exception as e:
+				print(f"Неожиданная ошибка: \n{e}")
 
 # TODO: сделать что-то с raise ошибок, просто обернуть все в try...except не кажется правильным,
 #  как вариант: написать пользовательские ошибки и вставить их, потому что иначе ValueError
