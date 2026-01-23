@@ -220,3 +220,7 @@ __pycache__/
 instructions.md
 
 data/
+
+# Логи
+logs/
+*.log
