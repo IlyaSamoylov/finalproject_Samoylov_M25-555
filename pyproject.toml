@@ -35,4 +35,4 @@ log_dir = "logs"
 log_level = "INFO"
 log_format = "json"
 default_base_currency = "USD"
-rates_ttl_seconds = 30000
+rates_ttl_seconds = 3000000

@@ -1,12 +1,10 @@
 import datetime
-from pathlib import Path
 
 from valutatrade_hub.core.currencies import get_currency
-from valutatrade_hub.core.utils import load, save, set_session
-from valutatrade_hub.core.models import User, Wallet, Portfolio
+from valutatrade_hub.core.models import User, Portfolio
 from valutatrade_hub.infra.settings import SettingsLoader
 from valutatrade_hub.core.exceptions import ApiRequestError, WalletNotFoundError
-
+from valutatrade_hub.infra.database import DBManager
 from valutatrade_hub.decorators import log_action
 
 # TODO: здесь, пока не напишем доступ к курсам через API или что там
@@ -14,8 +12,9 @@ class RatesService:
 
 	def __init__(self):
 		self._settings = SettingsLoader()
-		self._rate_dir = Path(self._settings.get("data_dir")) / "rates.json"
+		# TODO: не забудь вернуть правильный TTl в pyproject
 		self.cache_ttl = datetime.timedelta(seconds=self._settings.get("rates_ttl_seconds"))
+		self._db = DBManager()
 
 	def get_rate(self, from_: str, to: str) -> float:
 
@@ -46,9 +45,9 @@ class RatesService:
 
 	def _load_rates(self) -> dict:
 		try:
-			return load(self._rate_dir)
-		except Exception as e:
-			raise ApiRequestError(str(e))
+			return self._db.load_rates()
+		except FileNotFoundError:
+			raise ApiRequestError("Курсы недоступны")
 
 	def is_cache_fresh(self, rate: dict) -> bool:
 
@@ -98,76 +97,48 @@ class RatesService:
 			"updated_at": updated_at,
 		}
 
-
-
+# TODO: Как-то бы где-то отображать что ли, кто за рулем, раз теперь можно менять пользователей как перчатки
 class UseCases:
 	def __init__(self, rates_service: RatesService, current_user: User | None = None,
 	             current_portfolio: Portfolio | None = None):
 		self._rates_service = rates_service
-		self._current_user = current_user
-		self._current_portfolio = current_portfolio
-
 		self._settings = SettingsLoader()
 		self._base_currency = self._settings.get("default_base_currency")
-		self._portfolio_dir = Path(self._settings.get("data_dir")) / "portfolios.json"
-		self._users_dir = Path(self._settings.get("data_dir")) / "users.json"
+		self._db = DBManager()
 
-	@staticmethod
-	def _load(path: Path):
-		return load(path)
-
-	@staticmethod
-	def _save(path: Path, data):
-		return save(path, data)
-
+		user_id = self._db.load_session()
+		if user_id:
+			user_dict = self._db.get_user_by_id(user_id)
+			if user_dict:
+				self._current_user = User.from_dict(user_dict)
+				portfolio_dict = self._db.load_portfolio(self._current_user)
+				self._current_portfolio = Portfolio.from_dict(self._current_user, portfolio_dict)
+			else:
+				self._db.clear_session()
+				self._current_user = None
+				self._current_portfolio = None
+		else:
+			self._current_user = None
+			self._current_portfolio = None
 	@log_action("REGISTER")
 	def register(self, username:  str, password: str):
 		# password и username валидируются при инициализации экземпляра класса User ниже
 
-		# загрузка пользователей
-		users_lst = self._load(self._users_dir)
-		# если вернет None, то есть неизвестный путь
-		if users_lst is None:
-			# TODO: как развести, когда еще не было добавлено ни одного юзера и когда с
-			#  путем к файлу что-то не так?
-			#  вернусь к проблемам, когда буду делать загрузчик сессии
-			raise ValueError("Проверь путь до user.json либо пока нет ни одного юзера")
-
-		# проверка уникальности username
-		if any(u["username"] == username for u in users_lst):
-			raise ValueError(f"Имя пользователя '{username}' уже занято")
-
-		# генерация данных пользователя
-
-		user_id = max((u["user_id"] for u in users_lst), default=0) + 1
-		new_user = User(user_id, username, password)
-
-		users_lst.append(new_user.to_dict())
-		self._save(self._users_dir, users_lst)
+		new_user = self._db.create_user(username, password)
 
 		new_portfolio = Portfolio(new_user)
 		new_portfolio.add_currency(self._base_currency, init_balance=100.00)
-		portfolios_lst = self._load(self._portfolio_dir)
-		if portfolios_lst is None:
-			portfolios_lst = []
 
-		portfolios_lst.append(new_portfolio.to_dict())
-		self._save(self._portfolio_dir, portfolios_lst)
+		self._db.create_portfolio(new_portfolio)
 
 		# TODO: наверное лучше будет вернуть консоли сообщение для вывода на экран
-		print(f"Пользователь '{username}' зарегистрирован (id={user_id}). "
+		print(f"Пользователь '{username}' зарегистрирован (id={new_user.user_id}). "
 				f"Войдите: login --username {username} --password", len(password)*"*")
 
 	@log_action("LOGIN")
 	def login(self, username: str, password: str):
 
-		users_lst = self._load(self._users_dir)
-		if users_lst is None:
-			raise ValueError(f"Сначала необходимо зарегистрироваться")
-
-		# TODO: в будущем напишу dbmanager, который возьмет на себя ответственность
-		#  за поиск в базе нужных юзеров и их портфелей, а пока ручками
-		user_dict = next((u for u in users_lst if u["username"] == username), None)
+		user_dict = self._db.get_user_by_username(username)
 		if user_dict is None:
 			raise ValueError(f"Пользователь '{username}' не найден")
 
@@ -177,26 +148,27 @@ class UseCases:
 			raise ValueError("Неверный пароль")
 
 		self._current_user = user
-		self._current_portfolio = self._load_portfolio(user)
-		set_session(user)
+
+		portfolio = self._db.load_portfolio(user)
+		if portfolio is None:
+			raise RuntimeError("Портфель пользователя отсутствует")
+
+		portfolio = Portfolio.from_dict(self._current_user, portfolio)
+
+		self._current_portfolio = portfolio
+		self._db.save_session(user.user_id)
 
 		print(f"Вы вошли как '{username}'")
 
-	# TODO: уберем, когда придем к абстракции над БД
-	def _load_portfolio(self, user: User) -> Portfolio:
-		raw_portfolios = self._load(self._portfolio_dir)
-
-		for item in raw_portfolios:
-			if item["user_id"] == user.user_id:
-				wallets = {
-					code: Wallet(currency_code=code,
-								 balance=data["balance"])
-					for code, data in item["wallets"].items()
-				}
-				return Portfolio(user=user, wallets=wallets)
-
-		# если портфель не найден — возвращаем пустой
-		return Portfolio(user=user, wallets={})
+	@log_action("LOGOUT")
+	def logout(self):
+		if self._db.load_session():
+			print(f"Вы вышли из аккаунта {self._current_user.username}")
+			self._current_user = None
+			self._current_portfolio = None
+			self._db.clear_session()
+		else:
+			print("Вы еще не входили в аккаунт")
 
 	def show_portfolio(self, base: str | None  = None):
 		if base is None:
@@ -248,7 +220,7 @@ class UseCases:
 		wallet.deposit(amount)
 		after = wallet.balance
 
-		self._save_portfolio(portfolio)
+		self._db.save_portfolio(portfolio)
 
 		return {
 			"currency": currency_code,
@@ -293,7 +265,7 @@ class UseCases:
 		cost = amount * rate
 		usd_wallet.deposit(cost)
 
-		self._save_portfolio(portfolio)
+		self._db.save_portfolio(portfolio)
 
 		return {
 			"currency": currency_code,
@@ -324,7 +296,7 @@ class UseCases:
 		usd_wallet.deposit(amount)
 		after = usd_wallet.balance
 
-		self._save_portfolio(portfolio)
+		self._db.save_portfolio(portfolio)
 
 		return {
 			"currency": self._base_currency,
@@ -332,19 +304,4 @@ class UseCases:
 			"after": after,
 			"amount": amount,
 		}
-
-	def _save_portfolio(self, portfolio: Portfolio):
-			portfolios = self._load(self._portfolio_dir)
-
-			data = portfolio.to_dict()
-
-			for i, p in enumerate(portfolios):
-				if p["user_id"] == portfolio.user.user_id:
-					portfolios[i] = data
-					break
-			else:
-				portfolios.append(data)
-
-			self._save(self._portfolio_dir, portfolios)
-
 # TODO: все таки в buy/sell/deposit использовать "USD", base_currency из settings или
