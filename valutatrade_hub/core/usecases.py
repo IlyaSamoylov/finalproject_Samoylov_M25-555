@@ -1,13 +1,12 @@
 import datetime
 from pathlib import Path
 
+from valutatrade_hub.core.currencies import get_currency
 from valutatrade_hub.core.utils import load, save, set_session
 from valutatrade_hub.core.models import User, Wallet, Portfolio
 from valutatrade_hub.infra.settings import SettingsLoader
-from valutatrade_hub.core.exceptions import CurrencyNotFoundError, InsufficientFundsError, ApiRequestError, WalletNotFoundError
-# че, все методы RatesService в try..except c ApiRequestError оборачивать? Или заменить все локальные
-# load(RATES_DIR) на метод _load_rates и засунуть в него ApiRequestError? Если решим определить rates_dict
-# как атрибут класса RatesService, то даже не знаю, куда девать ApiRequestError
+from valutatrade_hub.core.exceptions import ApiRequestError, WalletNotFoundError
+
 from valutatrade_hub.decorators import log_action
 
 # TODO: здесь, пока не напишем доступ к курсам через API или что там
@@ -26,9 +25,6 @@ class RatesService:
 		if from_ == to:
 			return 1.0
 
-		self.validate_currency(code=from_)
-		self.validate_currency(code=to)
-
 		rates = self._load_rates()
 
 		key = f"{from_}_{to}"
@@ -36,29 +32,17 @@ class RatesService:
 
 		# если валюта есть, но курс недоступен
 		if key not in rates and reverse_key not in rates:
-			raise RuntimeError(f"Курс {from_}->{to} недоступен")
+			raise ApiRequestError(f"Курс {from_}->{to} недоступен")
 
 		rate_entry = rates.get(key) or rates.get(reverse_key)
 
 		if not self.is_cache_fresh(rate_entry):
-			raise RuntimeError("Курс недоступен: кеш устарел")
+			raise ApiRequestError("Курс недоступен: кеш устарел")
 
 		if key in rates:
 			return rates[key]["rate"]
 
 		return 1 / rates[reverse_key]["rate"]
-
-	def validate_currency(self, code: str):
-		rates = self._load_rates()
-		known = set()
-
-		for pair in rates:
-			if "_" in pair:
-				a, b = pair.split("_")
-				known.update([a, b])
-
-		if code not in known:
-			raise CurrencyNotFoundError(code)
 
 	def _load_rates(self) -> dict:
 		try:
@@ -88,9 +72,6 @@ class RatesService:
 			"updated_at": datetime
 		}
 		"""
-		self.validate_currency(code=from_)
-		self.validate_currency(code=to)
-
 		key = f"{from_}_{to}"
 		reverse_key = f"{to}_{from_}"
 
@@ -98,13 +79,13 @@ class RatesService:
 
 		# хотя бы один - прямой/обратный курс в rates есть
 		if key not in rates and reverse_key not in rates:
-			raise RuntimeError(f"Курс {from_}->{to} недоступен")
+			raise ApiRequestError(f"Курс {from_}->{to} недоступен")
 
 		# rate из двух, который есть в rates:
 		ex_rate = rates.get(key) or rates.get(reverse_key)
 
 		if not self.is_cache_fresh(ex_rate):
-			raise RuntimeError("Курс недоступен: кеш устарел и Parser недоступен")
+			raise ApiRequestError("Курс недоступен: кеш устарел и Parser недоступен")
 
 		# либо курс есть в rate и его берем, либо нет, тогда считаем по второму
 		req_rate = rates.get(key).get("rate") if rates.get(key) else 1 / rates[reverse_key]["rate"]
@@ -220,16 +201,16 @@ class UseCases:
 	def show_portfolio(self, base: str | None  = None):
 		if base is None:
 			base = self._base_currency
-		# TODO: где будет проверяться base? - наверное, где-то в Currency
+
 		if not self._current_user:
 			raise ValueError("Сначала выполните login")
 
 		if not self._current_portfolio.wallets:
 			raise ValueError(f"Портфель пуст")
 
-		self._rates_service.validate_currency(base)
+		currency = get_currency(base)
 
-		return self._current_portfolio.view(base, self._rates_service)
+		return self._current_portfolio.view(currency.code, self._rates_service)
 
 	@log_action("BUY", verbose=True)
 	def buy(self, currency: str, amount: float):
@@ -244,21 +225,22 @@ class UseCases:
 		if amount <= 0:
 			raise ValueError("'amount' должен быть положительным числом")
 
-		# валидация валюты сейчас - ответственность курсов
-		self._rates_service.validate_currency(code=currency)
+		# валидация валюты сейчас - ответственность валюты
+		currency = get_currency(currency)
+		currency_code = currency.code
 
 		portfolio = self._current_portfolio
 		if not portfolio:
 			raise RuntimeError("Портфель пользователя не загружен")
 
 		# курс currency → USD
-		rate = self._rates_service.get_rate(currency, self._base_currency)
+		rate = self._rates_service.get_rate(currency_code, self._base_currency)
 		cost_usd = amount * rate
 
-		# TODO: не уверен, стоит ли тут менять на self._base_currency, потому что..
 		usd_wallet = portfolio.get_or_create_wallet(self._base_currency)
 
-		wallet = portfolio.get_or_create_wallet(currency)
+		# если кошелька для этой валюты нет - создадим
+		wallet = portfolio.get_or_create_wallet(currency_code)
 
 		before = wallet.balance
 
@@ -269,7 +251,7 @@ class UseCases:
 		self._save_portfolio(portfolio)
 
 		return {
-			"currency": currency,
+			"currency": currency_code,
 			"before": before,
 			"after": after,
 			"rate": rate,
@@ -286,18 +268,19 @@ class UseCases:
 		if amount <= 0:
 			raise ValueError("'amount' должен быть положительным числом")
 
-		# валидация валюты сейчас - ответственность курсов
-		self._rates_service.validate_currency(code=currency)
+		# валидация валюты
+		currency = get_currency(currency)
+		currency_code = currency.code
 
 		portfolio = self._current_portfolio
 		if not portfolio:
 			raise RuntimeError("Портфель пользователя не загружен")
 
-		if not portfolio.has_wallet(currency):
-			raise WalletNotFoundError(currency)
+		if not portfolio.has_wallet(currency_code):
+			raise WalletNotFoundError(currency_code)
 
-		wallet = portfolio.get_wallet(currency)
-		# TODO: точно стоит менять на self._base_currency?
+		wallet = portfolio.get_wallet(currency_code)
+
 		usd_wallet = portfolio.get_wallet(self._base_currency)
 
 		before = wallet.balance
@@ -305,15 +288,15 @@ class UseCases:
 		after = wallet.balance
 
 		# расчетная стоимость
-		# TODO: точно стоит менять на self._base_currency?
-		rate = self._rates_service.get_rate(currency, self._base_currency)
+
+		rate = self._rates_service.get_rate(currency_code, self._base_currency)
 		cost = amount * rate
 		usd_wallet.deposit(cost)
 
 		self._save_portfolio(portfolio)
 
 		return {
-			"currency": currency,
+			"currency": currency_code,
 			"before": before,
 			"after": after,
 			"rate": rate,
@@ -321,11 +304,10 @@ class UseCases:
 		}
 
 	def get_rate(self, from_v:str, to:str):
+		from_currency = get_currency(from_v)
+		to_currency = get_currency(to)
 
-		# if not self._current_user:
-		# 	raise ValueError("Сначала выполните login")
-
-		return self._rates_service.get_rate_pair(from_v, to)
+		return self._rates_service.get_rate_pair(from_currency.code, to_currency.code)
 
 	@log_action("DEPOSIT", verbose=True)
 	def deposit(self, amount):
@@ -336,7 +318,6 @@ class UseCases:
 		if not portfolio:
 			raise RuntimeError("Портфель пользователя не загружен")
 
-		# TODO: точно стоит менять на self._base_currency?
 		usd_wallet = portfolio.get_or_create_wallet(self._base_currency)
 
 		before = usd_wallet.balance
@@ -345,7 +326,6 @@ class UseCases:
 
 		self._save_portfolio(portfolio)
 
-		# TODO: точно стоит менять на self._base_currency?
 		return {
 			"currency": self._base_currency,
 			"before": before,

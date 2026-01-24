@@ -133,7 +133,6 @@ class Wallet:
 		if amount <= 0:
 			raise ValueError("Сумма снятие не может быть меньше или равна 0")
 		if amount > self.balance:
-			# поменял исключение, правильно?
 			raise InsufficientFundsError(self.balance, self.currency_code ,amount)
 		self._balance -= amount
 
