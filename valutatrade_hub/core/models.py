@@ -201,7 +201,7 @@ class Portfolio:
 	@classmethod
 	def from_dict(cls, user: User, data: dict) -> Portfolio:
 		wallets = {
-			code: Wallet.from_dict(code, w_data)
+			code: Wallet.from_dict(w_data, code)
 			for code, w_data in data.get("wallets", {}).items()
 		}
 		return cls(user, wallets)
