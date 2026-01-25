@@ -20,6 +20,7 @@ class ValutatradeCLI:
 			"get-rate": "get-rate --from <from currency> --to <to currency>",
 			"deposit": "deposit --amount",
 			"logout": "logout",
+			"whoami": "whoami",
 			"справка": "help [--command <command>]",
 			"Закончить работу": "exit"
 		}
@@ -151,6 +152,9 @@ class ValutatradeCLI:
 
 					case "logout":
 						self._usecases.logout()
+
+					case "whoami":
+						print(self._usecases.whoami())
 
 					case "help":
 						self.print_help(params.get("command"))
