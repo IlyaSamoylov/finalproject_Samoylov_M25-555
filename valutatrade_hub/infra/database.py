@@ -1,4 +1,5 @@
 import json
+import threading
 from pathlib import Path
 from valutatrade_hub.infra.settings import SettingsLoader
 from typing import Any
@@ -14,6 +15,7 @@ class StorageModel(Enum):
 
 class DBManager:
 	_instance = None
+	_lock = threading.Lock()
 
 	_DEFAULTS = {
 		StorageModel.USERS: [],

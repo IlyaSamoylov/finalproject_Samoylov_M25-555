@@ -3,6 +3,7 @@ from valutatrade_hub.core.usecases import UseCases
 
 from valutatrade_hub.infra.settings import SettingsLoader
 
+
 class ValutatradeCLI:
 	def __init__(self, usecases: UseCases):
 		self._usecases = usecases
@@ -18,6 +19,8 @@ class ValutatradeCLI:
 			"sell": "sell --currency <currency> --amount <amount>",
 			"show-portfolio": f"show-portfolio [--base <base> = {self._base_currency}]",
 			"get-rate": "get-rate --from <from currency> --to <to currency>",
+			"update-rates": "update-rates [--source <source>]",
+			"show-rates": "show-rates --currency <str> --top <int> [--base <str>]",
 			"deposit": "deposit --amount",
 			"logout": "logout",
 			"whoami": "whoami",
@@ -138,6 +141,25 @@ class ValutatradeCLI:
 						print(f"Курс {from_v}→{to}: {result['rate']:.8f} "
 							f"(обновлено: {updated})")
 						print(f"Обратный курс {to}→{from_v}: {result['reverse_rate']:.8f}")
+
+					case "update-rates":
+						source = params.get("source")  # может быть None
+						self._usecases.update_rates(source=source)
+						print("Обновление курсов завершено. Подробности см. в логах.")
+
+					case "show-rates":
+						currency = params.get("currency")
+						top = params.get("top")
+						base = params.get("base")
+
+						rates = self._usecases.show_rates(
+							currency=currency,
+							top=top,
+							base=base,
+						)
+
+						for line in rates:
+							print(line)
 
 					case "deposit":
 						self._require_params(params, ["amount"])

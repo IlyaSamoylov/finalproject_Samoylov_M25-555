@@ -50,7 +50,8 @@ _CURRENCY_REGISTRY = {
     "USD": FiatCurrency("US Dollar", "USD", "United States"),
 	"EUR": FiatCurrency("Euro", "EUR", "Eurozone"),
     "BTC": CryptoCurrency("Bitcoin", "BTC", "SHA-256", 1.12e12),
-	"ETH": CryptoCurrency("Ethereum", "ETH", "Ethash", 3.7e11)
+	"ETH": CryptoCurrency("Ethereum", "ETH", "Ethash", 3.7e11),
+	"SOL": CryptoCurrency("Solana", "SOL", "Proof of History", 12e9)
 }
 
 def get_currency(code: str) -> Currency:

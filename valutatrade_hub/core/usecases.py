@@ -7,6 +7,11 @@ from valutatrade_hub.core.exceptions import ApiRequestError, WalletNotFoundError
 from valutatrade_hub.infra.database import DBManager
 from valutatrade_hub.decorators import log_action
 
+from valutatrade_hub.parser_service.api_clients import PARSER_CLIENT_REGISTRY
+from valutatrade_hub.parser_service.updater import RatesUpdater
+from valutatrade_hub.parser_service.storage import RatesStorage
+from valutatrade_hub.parser_service.config import ParserConfig
+
 # TODO: здесь, пока не напишем доступ к курсам через API или что там
 class RatesService:
 
@@ -105,6 +110,7 @@ class UseCases:
 		self._settings = SettingsLoader()
 		self._base_currency = self._settings.get("default_base_currency")
 		self._db = DBManager()
+		self._parser_config = ParserConfig()
 
 		user_id = self._db.load_session()
 		if user_id:
@@ -281,6 +287,84 @@ class UseCases:
 		to_currency = get_currency(to)
 
 		return self._rates_service.get_rate_pair(from_currency.code, to_currency.code)
+
+	def update_rates(self, source: str | None = None) -> None:
+		config = ParserConfig()
+		clients = []
+
+		if source is None:
+			for client_cls in PARSER_CLIENT_REGISTRY.values():
+				clients.append(client_cls(config))
+		else:
+			key = source.lower()
+			client_cls = PARSER_CLIENT_REGISTRY.get(key)
+
+			if not client_cls:
+				raise ValueError(
+					f"Неизвестный источник обновления: {source}. "
+					f"Доступные источники: {', '.join(PARSER_CLIENT_REGISTRY)}"
+				)
+
+			clients.append(client_cls(config))
+
+		storage = RatesStorage(self._parser_config)
+		updater = RatesUpdater(clients, storage)
+		updater.run_update()
+
+	def show_rates(
+			self,
+			currency: str | None = None,
+			top: int | None = None,
+			base: str | None = None,
+	) -> list[str]:
+
+
+		storage = RatesStorage(self._parser_config)
+		data = storage.load_rates()
+
+		pairs = data.get("pairs", {})
+		last_refresh = data.get("last_refresh")
+
+		if not pairs:
+			raise ValueError(
+				"Локальный кеш курсов пуст. Выполните 'update-rates'."
+			)
+
+		items = list(pairs.items())
+
+		if currency:
+			currency = currency.upper()
+			items = [
+				(pair, meta)
+				for pair, meta in items
+				if currency in pair
+			]
+
+		if base:
+			base = base.upper()
+			items = [
+				(pair, meta)
+				for pair, meta in items
+				if pair.endswith(f"_{base}")
+			]
+
+		if top:
+			items.sort(key=lambda x: x[1]["rate"], reverse=True)
+			items = items[:top]
+		else:
+			items.sort(key=lambda x: x[0])
+
+		if not items:
+			raise ValueError("Запрошенные курсы не найдены")
+
+		result = [f"Курсы из кеша (обновлено {last_refresh}):"]
+
+		for pair, meta in items:
+			result.append(
+				f"- {pair}: {meta['rate']} (источник: {meta['source']})"
+			)
+
+		return result
 
 	@log_action("DEPOSIT", verbose=True)
 	def deposit(self, amount):
