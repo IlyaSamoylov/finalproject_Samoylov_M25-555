@@ -27,14 +27,13 @@ class FiatCurrency(Currency):
 			raise ValueError("Страна должна быть непустой строкой")
 
 		super().__init__(name, code)
-		self.issuing_country =  issuing_country
+		self.issuing_country = issuing_country
 
 	def get_display_info(self):
 		return f"[FIAT] {self.code} - {self.name} (Issuing: {self.issuing_country})"
 
 class CryptoCurrency(Currency):
 	def __init__(self, name: str, code: str, algorithm: str, market_cap: float):
-		#TODO: валидация?
 		super().__init__(name, code)
 		self.algorithm = algorithm
 		self.market_cap = market_cap
@@ -61,6 +60,18 @@ def get_currency(code: str) -> Currency:
 		return _CURRENCY_REGISTRY[code]
 	except KeyError:
 		raise CurrencyNotFoundError(code)
+
+def get_fiat_currencies() -> list[str]:
+	return [
+	    code for (code, cls) in _CURRENCY_REGISTRY.items()
+	    if isinstance(cls, FiatCurrency)
+	]
+
+def get_crypto_currencies() -> list[str]:
+	return [
+		code for (code, cls) in _CURRENCY_REGISTRY.items()
+		if isinstance(cls, CryptoCurrency)
+	]
 
 
 
