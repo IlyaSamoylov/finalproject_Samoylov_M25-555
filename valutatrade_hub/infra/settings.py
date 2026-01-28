@@ -1,27 +1,22 @@
+import logging
+import threading
 from pathlib import Path
-from typing import Dict, Any
+from typing import Any, Dict
+
 import tomli
 
-# TODO: Приспособить SettingsLoader куда нужно
-# TODO: Не забыть поставить правильную частоту обновления в pyproject.toml
+logger = logging.getLogger("valutatrade")
+
 class SettingsLoader:
 	"""
-	Singleton-класс для загрузки и предоставления конфигурации проекта.
+	Singleton-класс для загрузки и предоставления конфигурации приложения.
 
-	Ответственность:
-	- загрузка конфигурации из pyproject.toml (секция [tool.valutatrade])
-	- кэширование конфигурации в памяти
-	- предоставление значений конфигурации через единый интерфейс
-	- применение значений по умолчанию при отсутствии или ошибке загрузки
-
-	Особенности:
-	- в приложении существует ровно один экземпляр SettingsLoader
-	- конфигурация загружается один раз и переиспользуется (in-memory cache)
-	- reload() позволяет принудительно перечитать конфигурацию
-
-	Класс относится к инфраструктурному слою и не содержит бизнес-логики.
+	Читает параметры из pyproject.toml, заполняет пропущенные дефолтными значениями,
+	кэширует их в памяти и предоставляет доступ	через единый интерфейс.
 	"""
-	_instanse = None # Атрибут класса для хранения единственного экземпляра
+	_instance = None
+	_instance_lock = threading.Lock()
+	_lock = threading.RLock()
 
 	def __new__(cls, *args, **kwargs):
 		"""
@@ -30,65 +25,48 @@ class SettingsLoader:
 		Реализация Singleton через __new__ гарантирует, что при любых
 		импортах и повторных вызовах будет использоваться один объект.
 		"""
-		# создание объекта класса
-		if cls._instanse is None:
-			#  создание нового экземпляра, если еще не был создан
-			cls._instanse = super().__new__(cls)
-			cls._instanse._initialized = False
-		return cls._instanse
+		if cls._instance is None:
+			with cls._instance_lock:
+				if cls._instance is None:
+					cls._instance = super().__new__(cls)
+					cls._instance._initialized = False
+		return cls._instance
 
 	def __init__(self):
 		"""
-		Инициализирует экземпляр SettingsLoader.
+		Инициализирует конфигурацию при первом создании экземпляра.
 
 		Инициализация выполняется только один раз за жизненный цикл
 		приложения. При повторных вызовах __init__ не выполняется.
 		"""
 		if getattr(self, "_initialized", False):
 			return
-		self._config : Dict[str, Any] = {}
+		self._config: Dict[str, Any] = {}
 		self._config_file = Path("pyproject.toml")
-
-		self._load_config()
+		with self._lock:
+			self._load_config()
 		self._initialized = True
 
 	def _load_config(self):
 		"""
-		Загружает конфигурацию из файла pyproject.toml при необходимости.
-
-		Поведение:
-		- если конфигурация ещё не загружена (кэш пуст),
-		  считывает данные из pyproject.toml
-		- если конфигурация уже загружена, использует кэш
-		- в любом случае применяет значения по умолчанию
-
-		Метод не предназначен для принудительной перезагрузки.
-		Для этого следует использовать reload().
+		Загружает конфигурацию из файла pyproject.toml и при необходимости заполняет
+		пустоты значениями по умолчанию
 		"""
 		if self._config_file.exists() and not self._config:
 			try:
 				with open(self._config_file, "rb") as f:
 					data = tomli.load(f)
 					self._config = data.get("tool", {}).get("valutatrade", {})
-			# TODO: затем заменить на логирование?
 			except Exception as e:
-				print(f"Ошибка загрузки конфигурации из pyproject.toml: {e}")
+				logger.warning("Ошибка загрузки конфигурации из pyproject.toml: %s",
+								e)
 				self._config = {}
 
-		self.set_defaults()
+		self._set_defaults()
 
-	def set_defaults(self):
+	def _set_defaults(self):
 		"""
-		Загружает конфигурацию из файла pyproject.toml при необходимости.
-
-		Поведение:
-		- если конфигурация ещё не загружена (кэш пуст),
-		  считывает данные из pyproject.toml
-		- если конфигурация уже загружена, использует кэш
-		- в любом случае применяет значения по умолчанию
-
-		Метод не предназначен для принудительной перезагрузки.
-		Для этого следует использовать reload().
+		Применяет значения конфигурации по умолчанию для отсутствующих ключей.
 		"""
 		defaults = {
 			"data_dir": "data",
@@ -108,20 +86,19 @@ class SettingsLoader:
 		"""
 		Возвращает значение конфигурации по ключу.
 
-		:param key: имя параметра конфигурации
-		:param default: значение, возвращаемое при отсутствии ключа
-		:return: значение конфигурации или default
+		Args:
+			key (str): название параметра конфигурации
+			default: дефолтное значение, возвращаемое при отсутствии ключа
+		Returns:
+			значение конфигурации или default
 		"""
-
-		return self._config.get(key, default)
+		with self._lock:
+			return self._config.get(key, default)
 
 	def reload(self) -> None:
 		"""
 		Принудительно перезагружает конфигурацию из файла.
-
-		Очищает текущий кэш конфигурации и повторно загружает данные
-		из pyproject.toml с последующим применением значений по умолчанию.
 		"""
-
-		self._config.clear()
-		self._load_config()
+		with self._lock:
+			self._config.clear()
+			self._load_config()

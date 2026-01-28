@@ -1,15 +1,31 @@
 
-import json
 import functools
+import json
 import logging
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 
 logger = logging.getLogger("valutatrade")
 
 
 def log_action(action: str, verbose: bool = False):
     """
-    action: BUY / SELL / REGISTER / LOGIN
+    Декоратор для логирования доменных операций.
+
+    Применяется к методам usecases: biy, sell, register, login, logout, deposit.
+    Фиксирует информацию об операции в формате json
+
+    Перед выполнением операции фиксирует контекст - время, операция, данные пользователя
+    При успешном выполнении логирует "result": "OK", при ошибке: "result": "ERROR", тип
+    ошибки и ее сообщение.
+    Ожидаемый контракт:
+    - декоратор предполагает наличие self._current_user и self._base_currency, а то None
+    - если операция возвращает dict, из него извлекаются доменные поля: currency, rate,
+    amount, base
+    - при verbose=True логируются состояния кошелька до и после операции
+
+    Args:
+        action (str): название операции
+        verbose (bool): нужна ли дополнительная информация
     """
 
     def decorator(func):
@@ -23,7 +39,7 @@ def log_action(action: str, verbose: bool = False):
                 "action": action,
                 "user_id": getattr(user, "user_id", None),
                 "username": getattr(user, "username", None),
-                "result": "OK",
+                "result": "OK"
             }
 
             try:
@@ -33,9 +49,9 @@ def log_action(action: str, verbose: bool = False):
                 if isinstance(result, dict):
                     log_data.update({
                         "currency": result.get("currency"),
-                        "amount": result.get("amount"),
+                        "cost": result.get("cost"),
                         "rate": result.get("rate"),
-                        "base": getattr(self, "_base_currency", None),
+                        "base": getattr(self, "_base_currency", None)
                     })
 
                     if verbose:
@@ -49,7 +65,7 @@ def log_action(action: str, verbose: bool = False):
                 log_data.update({
                     "result": "ERROR",
                     "error_type": type(e).__name__,
-                    "error_message": str(e),
+                    "error_message": str(e)
                 })
                 logger.error(json.dumps(log_data, ensure_ascii=False))
                 raise
