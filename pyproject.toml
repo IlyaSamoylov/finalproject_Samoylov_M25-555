@@ -31,6 +31,7 @@ select = ["E", "F", "I"]
 ignore = []
 
 [tool.valutatrade]
+api_key_path = "valutatrade_hub/.secrets/exchangerate_api_key.txt"
 data_dir = "data"
 log_dir = "logs"
 log_level = "DEBUG"

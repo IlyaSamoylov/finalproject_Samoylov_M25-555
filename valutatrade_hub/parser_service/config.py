@@ -13,8 +13,8 @@ class ParserConfig:
 	"""
 	Конфигурация сервисов получения валютных курсов.
     """
-	# API ключ загружается из переменной окружения
-	EXCHANGERATE_API_KEY: str = os.getenv("EXCHANGERATE_API_KEY")
+	# API ключ назначается позже в __post_init__
+	EXCHANGERATE_API_KEY: str | None = None
 
 	# эндпоинты
 	COINGECKO_URL: str = "https://api.coingecko.com/api/v3/simple/price"
@@ -40,11 +40,28 @@ class ParserConfig:
 
 	def __post_init__(self):
 		"""
-		Валидирует обязательные параметры конфигурации
-		:return:
+		Валидирует и загружает API-ключ.
+
+		Приоритет:
+		1. Переменная окружения EXCHANGERATE_API_KEY
+		2. Локальный файл из конфигурации
 		"""
-		if not self.EXCHANGERATE_API_KEY:
-			raise RuntimeError("API-ключ не установлен.")
+		# из переменной окружения
+		env_key = os.getenv("EXCHANGERATE_API_KEY")
+		if env_key:
+			self.EXCHANGERATE_API_KEY = env_key.strip()
+			return
+
+		# из локального файла
+		api_key_path = settings.get("api_key_path")
+		if api_key_path:
+			path = Path(api_key_path)
+			if path.exists():
+				self.EXCHANGERATE_API_KEY = path.read_text(encoding="utf-8").strip()
+				return
+
+		raise RuntimeError("API-ключ не установлен: задайте EXCHANGERATE_API_KEY или "
+							"укажите api_key_path в pyproject.toml")
 
 	# частота обновления, с
 	RATES_UPDATE_INTERVAL = 150
