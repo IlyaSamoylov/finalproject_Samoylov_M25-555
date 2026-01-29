@@ -60,8 +60,8 @@ class ParserConfig:
 				self.EXCHANGERATE_API_KEY = path.read_text(encoding="utf-8").strip()
 				return
 
-		raise RuntimeError("API-ключ не установлен: задайте EXCHANGERATE_API_KEY или "
-							"укажите api_key_path в pyproject.toml")
+		# raise RuntimeError("API-ключ не установлен: задайте EXCHANGERATE_API_KEY или "
+		#					"укажите api_key_path в pyproject.toml")
 
 	# частота обновления, с
 	RATES_UPDATE_INTERVAL = 150

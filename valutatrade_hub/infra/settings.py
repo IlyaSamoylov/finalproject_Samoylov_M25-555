@@ -1,9 +1,8 @@
 import logging
 import threading
+import tomllib
 from pathlib import Path
 from typing import Any, Dict
-
-import tomllib
 
 logger = logging.getLogger("valutatrade")
 
