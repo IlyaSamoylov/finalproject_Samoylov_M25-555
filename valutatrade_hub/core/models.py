@@ -444,7 +444,7 @@ class Portfolio:
 		items = []
 		total = 0.0
 		for wallet in self.wallets.values():
-			rate = rates_service.get_rate(wallet.currency_code, base)
+			rate = rates_service.get_rate(wallet.currency_code, base).get("rate")
 			converted = wallet.balance * rate
 			items.append((wallet.currency_code, wallet.balance, converted))
 			total += converted

@@ -31,41 +31,6 @@ class RatesService:
 		)
 		self._db = DBManager()
 
-	def get_rate(self, from_: str, to: str) -> float:
-		"""
-		Возвращает курс
-		Args:
-			from_ (str): код исходной валюты
-			to (str): код целевой валюты
-
-		Return:
-			float: курс from_ -> to
-		"""
-		if not isinstance(from_, str) or not isinstance(to, str):
-			raise TypeError("Коды валют должны быть строками")
-
-		if from_ == to:
-			return 1.0
-
-		rates = self._load_rates().get("pairs")
-
-		key = f"{from_}_{to}"
-		reverse_key = f"{to}_{from_}"
-
-		# если валюта есть, но курс недоступен
-		if key not in rates and reverse_key not in rates:
-			raise ApiRequestError(f"Курс {from_}->{to} недоступен")
-
-		rate_entry = rates.get(key) or rates.get(reverse_key)
-
-		if not self.is_cache_fresh(rate_entry):
-			raise ApiRequestError("Курс недоступен: кеш устарел")
-
-		if key in rates:
-			return rates[key]["rate"]
-
-		return 1 / rates[reverse_key]["rate"]
-
 	def _load_rates(self) -> dict:
 		"""
 		Загрузить курсы валют из rates.json
@@ -96,7 +61,7 @@ class RatesService:
 
 		return datetime.datetime.now(datetime.UTC) - last_refresh < self.cache_ttl
 
-	def get_rate_pair(self, from_: str, to: str) -> dict:
+	def get_rate(self, from_: str, to: str) -> dict:
 		"""
 		Возвращает пару курсов - прямой и обратный, между валютами
 		Args:
@@ -109,6 +74,17 @@ class RatesService:
 					"updated_at": datetime
 			}
 		"""
+		if not isinstance(from_, str) or not isinstance(to, str):
+			raise TypeError("Коды валют должны быть строками")
+
+		if from_ == to:
+			now = datetime.datetime.now(datetime.UTC)
+			return {
+				"rate": 1.0,
+				"reverse_rate": 1.0,
+				"updated_at": now,
+			}
+
 		key = f"{from_}_{to}"
 		reverse_key = f"{to}_{from_}"
 
@@ -309,7 +285,8 @@ class UseCases:
 			raise RuntimeError("Портфель пользователя не загружен")
 
 		# курс currency → base
-		rate = self._rates_service.get_rate(currency_code, self._base_currency)
+		rate_info = self._rates_service.get_rate(currency_code, self._base_currency)
+		rate = rate_info.get("rate")
 		cost_base = amount * rate
 
 		base_wallet = portfolio.get_or_create_wallet(self._base_currency)
@@ -382,7 +359,8 @@ class UseCases:
 
 		# расчетная стоимость
 
-		rate = self._rates_service.get_rate(currency_code, self._base_currency)
+		rate_info = self._rates_service.get_rate(currency_code, self._base_currency)
+		rate = rate_info.get("rate")
 		cost = amount * rate
 		base_wallet.deposit(cost)
 
@@ -412,7 +390,7 @@ class UseCases:
 		from_currency = get_currency(from_v)
 		to_currency = get_currency(to)
 
-		return self._rates_service.get_rate_pair(from_currency.code, to_currency.code)
+		return self._rates_service.get_rate(from_currency.code, to_currency.code)
 
 	def update_rates(self, source: str | None = None) -> None:
 		"""

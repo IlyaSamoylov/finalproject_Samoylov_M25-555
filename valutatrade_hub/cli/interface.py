@@ -156,7 +156,7 @@ class ValutatradeCLI:
 							f"- {currency}: было {result['before']:.4f} → " 
 							f"стало {result['after']:.4f} \n"
 						f"Оценочная стоимость покупки: {result['cost']:.2f} "
-						      f"{self._base_currency}")
+						f"{self._base_currency}")
 
 					case "sell":
 						self._require_params(params, ["currency", "amount"])
@@ -170,7 +170,7 @@ class ValutatradeCLI:
 							f"- {currency}: было {result['before']:.4f} → " 
 							f"стало {result['after']:.4f} \n"
 						f"Оценочная выручка: {result['cost']:.2f} "
-						      f"{self._base_currency}")
+						f"{self._base_currency}")
 
 					case "get-rate":
 						self._require_params(params, ["from", "to"])
