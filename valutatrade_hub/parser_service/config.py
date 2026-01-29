@@ -36,7 +36,7 @@ class ParserConfig:
 	HISTORY_FILE_PATH = BASE_DIR / "exchange_rates.json"
 
 	# сетевые параметры
-	REQUEST_TIMEOUT: int = 10
+	REQUEST_TIMEOUT: int = 5
 
 	def __post_init__(self):
 		"""

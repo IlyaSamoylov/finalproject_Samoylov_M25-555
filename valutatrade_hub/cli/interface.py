@@ -186,8 +186,9 @@ class ValutatradeCLI:
 
 					case "update-rates":
 						source = params.get("source")
-						self._usecases.update_rates(source=source)
-						print("Обновление курсов завершено. Подробности см. в логах.")
+						update_msg = self._usecases.update_rates(source=source)
+						for msg in update_msg:
+							print(msg)
 
 					case "show-rates":
 						currency = params.get("currency")

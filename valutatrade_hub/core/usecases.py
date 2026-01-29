@@ -392,7 +392,7 @@ class UseCases:
 
 		return self._rates_service.get_rate(from_currency.code, to_currency.code)
 
-	def update_rates(self, source: str | None = None) -> None:
+	def update_rates(self, source: str | None = None) -> list[str]:
 		"""
 		Обновить курсы валют через ParserService
 
@@ -419,7 +419,8 @@ class UseCases:
 
 		storage = RatesStorage(self._parser_config)
 		updater = RatesUpdater(clients, storage)
-		updater.run_update(trigger='CLI')
+		update_msg = updater.run_update(trigger='CLI')
+		return update_msg
 
 	def show_rates(self, currency: str | None = None, top: int | None = None,
 			base: str | None = None) -> list[str]:
